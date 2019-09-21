@@ -165,7 +165,7 @@ impl<T: ?Sized> Mutex<T> {
         if wait_key != WAIT_KEY_NONE {
             println!("Mutex::remove_waker wait_key != WAIT_KEY_NONE... lock waiters.");
             let mut waiters = self.waiters.lock().unwrap();
-            println!("Mutex::remove_waker locked.");
+            println!("Mutex::remove_waker locked. len: {}", waiters.len());
             match waiters.remove(wait_key) {
                 Waiter::Waiting(_) => {
                     println!("Mutex::remove_waker Waiting...");
@@ -257,13 +257,16 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
         {
             println!("Mutex::poll... getting waiters.");
             let mut waiters = mutex.waiters.lock().unwrap();
-            println!("Mutex::poll... locked waiters.");
+            println!("Mutex::poll... locked waiters. len: {}", waiters.len());
             if self.wait_key == WAIT_KEY_NONE {
-                println!("Mutex::poll... got WAIT_KEY_NONE");
+                println!("Mutex::poll... got WAIT_KEY_NONE, inserting");
                 self.wait_key =
                     waiters.insert(Waiter::Waiting(cx.waker().clone()));
                 if waiters.len() == 1 {
+                    println!("Mutex::poll... got WAIT_KEY_NONE, len == 1");
                     mutex.state.fetch_or(HAS_WAITERS, Ordering::Relaxed); // released by mutex unlock
+                } else {
+                    println!("Mutex::poll... got WAIT_KEY_NONE, len > 1");
                 }
             } else {
                 println!("Mutex::poll... registering");
@@ -330,7 +333,7 @@ impl<T: ?Sized> Drop for MutexGuard<'_, T> {
         if (old_state & HAS_WAITERS) != 0 {
             println!("MutexGuard drop waiters.lcok()...");
             let mut waiters = self.mutex.waiters.lock().unwrap();
-            println!("MutexGuard drop got waiters...");
+            println!("MutexGuard drop got waiters... len: {}", waiters.len());
             if let Some((_i, waiter)) = waiters.iter_mut().next() {
                 println!("MutexGuard drop waking...");
                 waiter.wake();
