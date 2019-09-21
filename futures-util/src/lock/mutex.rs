@@ -248,6 +248,8 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
             println!("Mutex::poll... returning Ready.");
             println!("-- MutexLockFuture::poll");
             return Poll::Ready(lock);
+        } else {
+            println!("Mutex::poll... did not get try_lock");
         }
 
         println!("Mutex::poll... try_lock failed.");
@@ -280,7 +282,7 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
             println!("-- MutexLockFuture::poll");
             return Poll::Ready(lock);
         } else {
-            println!("Mutex::poll... did not get try_lock");
+            println!("Mutex::poll... did not get try_lock again");
         }
 
         println!("-- MutexLockFuture::poll");
