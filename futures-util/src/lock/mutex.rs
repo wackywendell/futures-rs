@@ -150,24 +150,36 @@ impl<T: ?Sized> Mutex<T> {
     }
 
     fn remove_waker(&self, wait_key: usize, wake_another: bool) {
+        println!("Mutex::remove_waker...");
         if wait_key != WAIT_KEY_NONE {
+            println!("Mutex::remove_waker wait_key != WAIT_KEY_NONE... lock waiters.");
             let mut waiters = self.waiters.lock().unwrap();
+            println!("Mutex::remove_waker locked.");
             match waiters.remove(wait_key) {
-                Waiter::Waiting(_) => {}
+                Waiter::Waiting(_) => {
+                    println!("Mutex::remove_waker Waiting...");
+                }
                 Waiter::Woken => {
+                    println!("Mutex::remove_waker Woken...");
                     // We were awoken, but then dropped before we could
                     // wake up to acquire the lock. Wake up another
                     // waiter.
                     if wake_another {
                         if let Some((_i, waiter)) = waiters.iter_mut().next() {
+                            println!("Mutex::remove_waker waiter.wake()...");
                             waiter.wake();
+                            println!("Mutex::remove_waker waiter.wake() done.");
                         }
                     }
                 }
             }
             if waiters.is_empty() {
+                println!("Mutex::remove_waker waiters empty...");
                 self.state.fetch_and(!HAS_WAITERS, Ordering::Relaxed); // released by mutex unlock
+                println!("Mutex::remove_waker waiters empty done.");
             }
+        } else {
+            println!("Mutex::wait_key == WAIT_KEY_NONE.");
         }
     }
 }
