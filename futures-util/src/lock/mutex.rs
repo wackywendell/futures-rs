@@ -304,14 +304,21 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for MutexGuard<'_, T> {
 
 impl<T: ?Sized> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
+        println!("MutexGuard dropping...");
         let old_state =
             self.mutex.state.fetch_and(!IS_LOCKED, Ordering::AcqRel);
+        println!("MutexGuard drop fetch...");
         if (old_state & HAS_WAITERS) != 0 {
+            println!("MutexGuard drop waiters.lcok()...");
             let mut waiters = self.mutex.waiters.lock().unwrap();
+            println!("MutexGuard drop got waiters...");
             if let Some((_i, waiter)) = waiters.iter_mut().next() {
+                println!("MutexGuard drop waking...");
                 waiter.wake();
+                println!("MutexGuard drop wake done...");
             }
         }
+        println!("MutexGuard dropped.");
     }
 }
 
