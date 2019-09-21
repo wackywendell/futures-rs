@@ -44,9 +44,16 @@ enum Waiter {
 
 impl Waiter {
     fn register(&mut self, waker: &Waker) {
+        println!("Waiter::register: Registering...");
         match self {
-            Waiter::Waiting(w) if waker.will_wake(w) => {}
-            _ => *self = Waiter::Waiting(waker.clone()),
+            Waiter::Waiting(w) if waker.will_wake(w) => {
+                println!("Waiter::register: will_wake...");
+            }
+            _ => {
+                println!("Waiter::register: waker.clone...");
+                *self = Waiter::Waiting(waker.clone());
+                println!("Waiter::register: waker.clone...");
+            }
         }
     }
 
