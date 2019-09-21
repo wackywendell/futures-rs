@@ -78,11 +78,14 @@ const HAS_WAITERS: usize = 1 << 1;
 impl<T> Mutex<T> {
     /// Creates a new futures-aware mutex.
     pub fn new(t: T) -> Mutex<T> {
-        Mutex {
+        println!("== Mutex::new");
+        let m = Mutex {
             state: AtomicUsize::new(0),
             waiters: StdMutex::new(Slab::new()),
             value: UnsafeCell::new(t),
-        }
+        };
+        println!("-- Mutex::new");
+        m
     }
 
     /// Consumes this mutex, returning the underlying data.
@@ -105,12 +108,16 @@ impl<T: ?Sized> Mutex<T> {
     ///
     /// If the lock is currently held, this will return `None`.
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        println!("== Mutex::try_lock");
         let old_state = self.state.fetch_or(IS_LOCKED, Ordering::Acquire);
-        if (old_state & IS_LOCKED) == 0 {
+        let g = if (old_state & IS_LOCKED) == 0 {
             Some(MutexGuard { mutex: self })
         } else {
             None
-        }
+        };
+
+        println!("-- Mutex::try_lock");
+        g
     }
 
     /// Acquire the lock asynchronously.
@@ -118,12 +125,12 @@ impl<T: ?Sized> Mutex<T> {
     /// This method returns a future that will resolve once the lock has been
     /// successfully acquired.
     pub fn lock(&self) -> MutexLockFuture<'_, T> {
-        println!("Mutex::lock...");
+        println!("== Mutex::lock");
         let f = MutexLockFuture {
             mutex: Some(self),
             wait_key: WAIT_KEY_NONE,
         };
-        println!("Mutex::lock done.");
+        println!("-- Mutex::lock");
         f
     }
 
@@ -144,9 +151,13 @@ impl<T: ?Sized> Mutex<T> {
     /// # });
     /// ```
     pub fn get_mut(&mut self) -> &mut T {
+        println!("== Mutex::get_mut");
         // We know statically that there are no other references to `self`, so
         // there's no need to lock the inner mutex.
-        unsafe { &mut *self.value.get() }
+        let m = unsafe { &mut *self.value.get() };
+
+        println!("-- Mutex::get_mut");
+        m
     }
 
     fn remove_waker(&self, wait_key: usize, wake_another: bool) {
@@ -224,7 +235,7 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Self::Output> {
-        println!("Mutex::poll...");
+        println!("== MutexLockFuture::poll");
         let mutex =
             self.mutex.expect("polled MutexLockFuture after completion");
         println!("Mutex::poll... 2");
@@ -235,6 +246,7 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
             println!("Mutex::poll... remove_waker...");
             self.mutex = None;
             println!("Mutex::poll... returning Ready.");
+            println!("-- MutexLockFuture::poll");
             return Poll::Ready(lock);
         }
 
@@ -265,17 +277,20 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
             println!("Mutex::poll... got try_lock again");
             mutex.remove_waker(self.wait_key, false);
             self.mutex = None;
+            println!("-- MutexLockFuture::poll");
             return Poll::Ready(lock);
         } else {
             println!("Mutex::poll... did not get try_lock");
         }
 
+        println!("-- MutexLockFuture::poll");
         Poll::Pending
     }
 }
 
 impl<T: ?Sized> Drop for MutexLockFuture<'_, T> {
     fn drop(&mut self) {
+        println!("== MutexLockFuture::drop");
         if let Some(mutex) = self.mutex {
             // This future was dropped before it acquired the mutex.
             //
@@ -283,6 +298,7 @@ impl<T: ?Sized> Drop for MutexLockFuture<'_, T> {
             // had been awoken to acquire the lock.
             mutex.remove_waker(self.wait_key, true);
         }
+        println!("-- MutexLockFuture::drop");
     }
 }
 
@@ -304,6 +320,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for MutexGuard<'_, T> {
 
 impl<T: ?Sized> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
+        println!("== MutexGuard::drop");
         println!("MutexGuard dropping...");
         let old_state =
             self.mutex.state.fetch_and(!IS_LOCKED, Ordering::AcqRel);
@@ -319,6 +336,7 @@ impl<T: ?Sized> Drop for MutexGuard<'_, T> {
             }
         }
         println!("MutexGuard dropped.");
+        println!("-- MutexGuard::drop");
     }
 }
 
