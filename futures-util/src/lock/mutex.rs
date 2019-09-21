@@ -118,10 +118,13 @@ impl<T: ?Sized> Mutex<T> {
     /// This method returns a future that will resolve once the lock has been
     /// successfully acquired.
     pub fn lock(&self) -> MutexLockFuture<'_, T> {
-        MutexLockFuture {
+        println!("Mutex::lock...");
+        let f = MutexLockFuture {
             mutex: Some(self),
             wait_key: WAIT_KEY_NONE,
-        }
+        };
+        println!("Mutex::lock done.");
+        f
     }
 
     /// Returns a mutable reference to the underlying data.
@@ -209,14 +212,21 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Self::Output> {
+        println!("Mutex::poll...");
         let mutex =
             self.mutex.expect("polled MutexLockFuture after completion");
+        println!("Mutex::poll... 2");
 
         if let Some(lock) = mutex.try_lock() {
+            println!("Mutex::poll... try_lock...");
             mutex.remove_waker(self.wait_key, false);
+            println!("Mutex::poll... remove_waker...");
             self.mutex = None;
+            println!("Mutex::poll... returning Ready.");
             return Poll::Ready(lock);
         }
+
+        println!("Mutex::poll... try_lock failed.");
 
         {
             let mut waiters = mutex.waiters.lock().unwrap();
