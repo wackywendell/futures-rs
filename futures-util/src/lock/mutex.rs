@@ -1,12 +1,12 @@
 use futures_core::future::{FusedFuture, Future};
 use futures_core::task::{Context, Poll, Waker};
 use slab::Slab;
-use std::{fmt, mem};
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex as StdMutex;
+use std::{fmt, mem};
 
 /// A futures-aware mutex.
 pub struct Mutex<T: ?Sized> {
@@ -45,16 +45,22 @@ enum Waiter {
 impl Waiter {
     fn register(&mut self, waker: &Waker) {
         match self {
-            Waiter::Waiting(w) if waker.will_wake(w) => {},
+            Waiter::Waiting(w) if waker.will_wake(w) => {}
             _ => *self = Waiter::Waiting(waker.clone()),
         }
     }
 
     fn wake(&mut self) {
+        println!("wake: start...");
         match mem::replace(self, Waiter::Woken) {
-            Waiter::Waiting(waker) => waker.wake(),
-            Waiter::Woken => {},
+            Waiter::Waiting(waker) => {
+                println!("wake: waking...");
+                waker.wake();
+                println!("wake: woke...")
+            }
+            Waiter::Woken => println!("wake: already woken..."),
         }
+        println!("wake: done.");
     }
 }
 
@@ -137,7 +143,7 @@ impl<T: ?Sized> Mutex<T> {
         if wait_key != WAIT_KEY_NONE {
             let mut waiters = self.waiters.lock().unwrap();
             match waiters.remove(wait_key) {
-                Waiter::Waiting(_) => {},
+                Waiter::Waiting(_) => {}
                 Waiter::Woken => {
                     // We were awoken, but then dropped before we could
                     // wake up to acquire the lock. Wake up another
@@ -171,13 +177,14 @@ impl<T: ?Sized> fmt::Debug for MutexLockFuture<'_, T> {
         f.debug_struct("MutexLockFuture")
             .field("was_acquired", &self.mutex.is_none())
             .field("mutex", &self.mutex)
-            .field("wait_key", &(
-                    if self.wait_key == WAIT_KEY_NONE {
-                        None
-                    } else {
-                        Some(self.wait_key)
-                    }
-                ))
+            .field(
+                "wait_key",
+                &(if self.wait_key == WAIT_KEY_NONE {
+                    None
+                } else {
+                    Some(self.wait_key)
+                }),
+            )
             .finish()
     }
 }
@@ -191,8 +198,12 @@ impl<T: ?Sized> FusedFuture for MutexLockFuture<'_, T> {
 impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
     type Output = MutexGuard<'a, T>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mutex = self.mutex.expect("polled MutexLockFuture after completion");
+    fn poll(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Self::Output> {
+        let mutex =
+            self.mutex.expect("polled MutexLockFuture after completion");
 
         if let Some(lock) = mutex.try_lock() {
             mutex.remove_waker(self.wait_key, false);
@@ -203,7 +214,8 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
         {
             let mut waiters = mutex.waiters.lock().unwrap();
             if self.wait_key == WAIT_KEY_NONE {
-                self.wait_key = waiters.insert(Waiter::Waiting(cx.waker().clone()));
+                self.wait_key =
+                    waiters.insert(Waiter::Waiting(cx.waker().clone()));
                 if waiters.len() == 1 {
                     mutex.state.fetch_or(HAS_WAITERS, Ordering::Relaxed); // released by mutex unlock
                 }
@@ -254,7 +266,8 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for MutexGuard<'_, T> {
 
 impl<T: ?Sized> Drop for MutexGuard<'_, T> {
     fn drop(&mut self) {
-        let old_state = self.mutex.state.fetch_and(!IS_LOCKED, Ordering::AcqRel);
+        let old_state =
+            self.mutex.state.fetch_and(!IS_LOCKED, Ordering::AcqRel);
         if (old_state & HAS_WAITERS) != 0 {
             let mut waiters = self.mutex.waiters.lock().unwrap();
             if let Some((_i, waiter)) = waiters.iter_mut().next() {
