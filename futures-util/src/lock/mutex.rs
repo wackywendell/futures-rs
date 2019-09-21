@@ -229,24 +229,33 @@ impl<'a, T: ?Sized> Future for MutexLockFuture<'a, T> {
         println!("Mutex::poll... try_lock failed.");
 
         {
+            println!("Mutex::poll... getting waiters.");
             let mut waiters = mutex.waiters.lock().unwrap();
+            println!("Mutex::poll... locked waiters.");
             if self.wait_key == WAIT_KEY_NONE {
+                println!("Mutex::poll... got WAIT_KEY_NONE");
                 self.wait_key =
                     waiters.insert(Waiter::Waiting(cx.waker().clone()));
                 if waiters.len() == 1 {
                     mutex.state.fetch_or(HAS_WAITERS, Ordering::Relaxed); // released by mutex unlock
                 }
             } else {
+                println!("Mutex::poll... registering");
                 waiters[self.wait_key].register(cx.waker());
             }
         }
 
+        println!("Mutex::poll... try_lock again");
+
         // Ensure that we haven't raced `MutexGuard::drop`'s unlock path by
         // attempting to acquire the lock again.
         if let Some(lock) = mutex.try_lock() {
+            println!("Mutex::poll... got try_lock again");
             mutex.remove_waker(self.wait_key, false);
             self.mutex = None;
             return Poll::Ready(lock);
+        } else {
+            println!("Mutex::poll... did not get try_lock");
         }
 
         Poll::Pending
